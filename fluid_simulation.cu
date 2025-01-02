@@ -23,7 +23,7 @@ __global__ void applyBoundaryConditions(float *u, float *v, float *p, float *d, 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (j == 0 || j == ny - 1) {
+    if (j == 0 || j == ny - 1|| i == nx - 1) {
         int idx = i + j * nx;
 
         // Velocidad cero en las paredes
@@ -44,6 +44,18 @@ __global__ void applyBoundaryConditions(float *u, float *v, float *p, float *d, 
         p[idx] = 0.0f;  // Presión dentro del obstáculo
         d[idx] = 0.0f;  // Divergencia dentro del obstáculo
     }
+
+    // Entrada de fluido en el borde izquierdo
+    if (i == 0 && j >= 0 && j < ny) {
+        int idx = i + j * nx;
+        u[idx] = 5.0f;  // Velocidad en x en la entrada
+        v[idx] = 0.0f;         // Velocidad en y en la entrada (puede ajustarse si se desea flujo 2D)
+        p[idx] = 0.0f;         // Condición de presión inicial en la entrada
+        d[idx] = 0.0f;         // Divergencia en la entrada
+    }
+
+
+
 }
 
 
@@ -204,14 +216,15 @@ __global__ void initialize(float *u, float *v, float *p, float *d, int nx, int n
         v[idx] = 0.0f;  // Inicializar velocidad en y
         p[idx] = 0.0f;  // Inicializar presión
         d[idx] = 0.0f;  // Inicializar divergencia
-
+        /*
         // solo asignar velocidad en la pared izquierda
         if (i == 0) {
-            u[idx] = 1.0f;  
+            u[idx] = 5.0f;  
             v[idx] = 0.0f;
 
             //v[idx] = 0.2f;  // Velocidad en y en el centro de la pared izquierda
         }
+        */
     }
 
 
@@ -233,7 +246,7 @@ int main() {
     const int nx = 256;
     const int ny = 256;
 
-    // Dominio físico (1m x 1m)
+    // Dominio físico
     const float domain_length = 1.0f; // en metros
 
     // Espaciado en x e y
@@ -243,20 +256,16 @@ int main() {
     // Paso de tiempo ajustado para cumplir la condición CFL
     const float dt = 1.0f / 1000.0f;
 
-    // Viscosidad cinemática (inicialmente mayor para estabilidad)
-    const float nu = 0.01f; // En m^2/s
-
+    const float nu = 0.01f; 
 
 
     // parametros
-    size_t iter_count = 1000;
-    unsigned long long seed = time(nullptr); // O cualquier otro método para generar un seed
+    size_t iter_count = 100000;
 
-    int x1 = nx / 2 - 10; // Esquina superior izquierda en x
-    int y1 = ny / 2 - 60; // Esquina superior izquierda en y
-    int x2 = nx / 2 + 10; // Esquina inferior derecha en x
-    int y2 = ny / 2 + 60; // Esquina inferior derecha en y
-
+    int x1 = nx / 2 - 60; // pared izquierda
+    int y1 = ny / 2 - 30; // pared de arriba
+    int x2 = nx / 2 - 0; // pared derecha
+    int y2 = ny / 2 + 30; // pared de abajo
 
     // Reservar memoria para los campos de velocidad en la CPU y la GPU
     float *u        = nullptr;
@@ -317,7 +326,7 @@ MemoryParams p1;
     view_p1.options.default_color = {256,0,0}; // no sirve segun Isaias
     view_p1.options.default_size = 1;
 
-    engine.createView(view_u1);
+    engine.createView(view_p1);
 
     engine.displayAsync();
 
@@ -340,7 +349,7 @@ MemoryParams p1;
         checkCuda(cudaDeviceSynchronize());
 
         // Calcular la presión
-        solvePoisson<<<numBlocks, threadsPerBlock>>>(p, divergence, nx, ny, dx, dy, 100);
+        solvePoisson<<<numBlocks, threadsPerBlock>>>(p, divergence, nx, ny, dx, dy, 1000);
         checkCuda(cudaDeviceSynchronize());      
 
         // Calcular las velocidades en el siguiente paso de tiempo
